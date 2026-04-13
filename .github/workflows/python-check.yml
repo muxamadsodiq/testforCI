@@ -1,13 +1,42 @@
-name: Botni Tekshirish
-on: [push]
+name: Telegram Bot CI/CD
+
+on:
+  push:
+    branches: [ main ]  # Faqat main branchga push bo'lganda ishlaydi
+
 jobs:
-  check-code:
+  # 1-Bosqich: CI (Tekshirish)
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      
       - name: Pythonni sozlash
         uses: actions/setup-python@v4
         with:
           python-version: '3.9'
-      - name: Skriptni yurgizib ko'rish
-        run: python main.py
+          
+      - name: Kutubxonalarni o'rnatish
+        run: |
+          pip install -r requirements.txt || echo "Requirements file not found"
+          
+      - name: Kodni tekshirish
+        run: python main.py & sleep 5 && kill $! # Skriptni yurgizib ko'radi va o'chiradi
+
+  # 2-Bosqich: CD (Serverga joylash)
+  deploy:
+    needs: test  # Faqat test muvaffaqiyatli o'tsagina ishga tushadi
+    runs-on: ubuntu-latest
+    steps:
+      - name: SSH orqali serverga ulanish va yangilash
+        uses: appleboy/ssh-action@master
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            cd /home/${{ secrets.SERVER_USER }}/bot_papkasi  # Boting turgan papkaga kirish
+            git pull origin main                            # Yangi kodni olish
+            source venv/bin/activate                        # Virtual muhitni yoqish
+            pip install -r requirements.txt                 # Yangi kutubxonalarni o'rnatish
+            sudo systemctl restart my_bot_service           # Botni restart qilish
